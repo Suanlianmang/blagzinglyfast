@@ -3,8 +3,8 @@ package main
 import (
 	"html/template"
 	"io"
-	"net/http"
 
+	"github.com/Suanlianmang/blagzignlyfast/pkg/pages"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
@@ -17,31 +17,44 @@ func (t *Templates) Render(w io.Writer, name string, data interface{}, c echo.Co
     return t.templates.ExecuteTemplate(w, name, data)
 }
 
-func newTempalte() *Templates {
-    return &Templates{
-        templates: template.Must(template.ParseGlob("views/*.html")),
-    }
+
+func newTemplates(pattern string) *Templates {
+	return &Templates{
+		templates: template.Must(template.ParseGlob(pattern)),
+	}
 }
 
-type Count struct {
-    Count int
+func rendererMiddleware(pattern string) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+            renderer := newTemplates(pattern)
+			c.Echo().Renderer = renderer
+			return next(c)
+		}
+	}
 }
+
 
 func main() {
     e := echo.New()
     e.Use(middleware.Logger())
     e.Static("/static", "assets")
     
-    count := Count{ Count: 0 }
-    e.Renderer = newTempalte()
-    e.GET("/", func(c echo.Context) error {
-        return c.Render(http.StatusOK, "index", count)
-    })
+    count := &pages.Count{ Count: 0 }
 
-    e.POST("/count", func(c echo.Context) error {
-        count.Count += 1
-        return c.Render(http.StatusOK, "count", count)
+    base := e.Group("/")
+    // Middleware to pass the count to handlers
+    base.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+        return func(c echo.Context) error {
+            c.Set("count", count)
+            return next(c)
+        }
     })
+    base.Use(rendererMiddleware("views/test.html"))
+
+    base.GET("", pages.Index)
+    base.POST("count", pages.Increment)
+
    
     e.Logger.Fatal(e.Start(":8000"))
 
